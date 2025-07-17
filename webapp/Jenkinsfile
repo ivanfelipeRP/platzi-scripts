@@ -10,11 +10,23 @@ pipeline {
   }
 
   stages {
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+        script {
+          echo "Branch actual: ${env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'NO DEFINIDO'}"
+        }
+      }
+    }
+
     stage('Build') {
       steps {
         script {
           dir("webapp") {
-            dockerImage = docker.build("${env.ARTIFACT_ID}")
+            // Declaración explícita de dockerImage para evitar advertencias
+            def dockerImage = docker.build(env.ARTIFACT_ID)
+            env.DOCKER_IMAGE_ID = dockerImage.id
           }
         }
       }
@@ -22,18 +34,20 @@ pipeline {
 
     stage('Run tests') {
       steps {
-        sh "docker run ${dockerImage.id} npm test"
+        sh "docker run ${env.DOCKER_IMAGE_ID} npm test"
       }
     }
 
     stage('Publish') {
       when {
-        branch 'main'  // ✅ Actualizado: antes era 'master'
+        expression { 
+          return env.BRANCH_NAME == 'master' || env.GIT_BRANCH == 'master' 
+        }
       }
       steps {
         script {
           docker.withRegistry("", "DockerHubCredentials") {
-            dockerImage.push()
+            docker.image(env.ARTIFACT_ID).push()
           }
         }
       }
@@ -41,11 +55,13 @@ pipeline {
 
     stage('Schedule Staging Deployment') {
       when {
-        branch 'main'  // ✅ Actualizado: antes era 'master'
+        expression { 
+          return env.BRANCH_NAME == 'master' || env.GIT_BRANCH == 'master' 
+        }
       }
       steps {
         build job: 'deploy-webapp-staging', parameters: [
-          string(name: 'ARTIFACT_ID', value: "${env.ARTIFACT_ID}")
+          string(name: 'ARTIFACT_ID', value: env.ARTIFACT_ID)
         ], wait: false
       }
     }
