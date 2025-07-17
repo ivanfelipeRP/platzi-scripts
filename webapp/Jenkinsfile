@@ -6,27 +6,17 @@ pipeline {
   }
 
   environment {
-    ARTIFACT_ID = "elbuo8/webapp:${env.BUILD_NUMBER}"
+    // Cambiar el nombre del repositorio Docker al tuyo
+    ARTIFACT_ID = "ivanfeliperp/webapp:${env.BUILD_NUMBER}"
   }
 
   stages {
-
-    stage('Checkout') {
-      steps {
-        checkout scm
-        script {
-          echo "Branch actual: ${env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'NO DEFINIDO'}"
-        }
-      }
-    }
-
     stage('Build') {
       steps {
         script {
           dir("webapp") {
-            // Declaración explícita de dockerImage para evitar advertencias
-            def dockerImage = docker.build(env.ARTIFACT_ID)
-            env.DOCKER_IMAGE_ID = dockerImage.id
+            // Construye la imagen Docker usando el Dockerfile en webapp/
+            dockerImage = docker.build("${env.ARTIFACT_ID}")
           }
         }
       }
@@ -34,20 +24,20 @@ pipeline {
 
     stage('Run tests') {
       steps {
-        sh "docker run ${env.DOCKER_IMAGE_ID} npm test"
+        // Ejecuta los tests dentro del contenedor
+        sh "docker run ${dockerImage.id} npm test"
       }
     }
 
     stage('Publish') {
       when {
-        expression { 
-          return env.BRANCH_NAME == 'master' || env.GIT_BRANCH == 'master' 
-        }
+        // Se ejecuta solo en la rama main (GitHub moderno)
+        branch 'main'
       }
       steps {
         script {
-          docker.withRegistry("", "DockerHubCredentials") {
-            docker.image(env.ARTIFACT_ID).push()
+          docker.withRegistry('', 'DockerHubCredentials') {
+            dockerImage.push()
           }
         }
       }
@@ -55,15 +45,19 @@ pipeline {
 
     stage('Schedule Staging Deployment') {
       when {
-        expression { 
-          return env.BRANCH_NAME == 'master' || env.GIT_BRANCH == 'master' 
-        }
+        branch 'main'
       }
       steps {
         build job: 'deploy-webapp-staging', parameters: [
-          string(name: 'ARTIFACT_ID', value: env.ARTIFACT_ID)
+          string(name: 'ARTIFACT_ID', value: "${env.ARTIFACT_ID}")
         ], wait: false
       }
+    }
+  }
+
+  post {
+    failure {
+      echo "La build falló. Revisa los logs para más información."
     }
   }
 }
