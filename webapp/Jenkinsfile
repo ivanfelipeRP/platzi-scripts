@@ -14,19 +14,21 @@ pipeline {
       steps {
         script {
           dir("webapp") {
-            dockerImage = docker.build "${env.ARTIFACT_ID}"
+            dockerImage = docker.build("${env.ARTIFACT_ID}")
           }
         }
       }
     }
+
     stage('Run tests') {
       steps {
         sh "docker run ${dockerImage.id} npm test"
       }
     }
+
     stage('Publish') {
       when {
-        branch 'master'
+        branch 'main'  // ✅ Actualizado: antes era 'master'
       }
       steps {
         script {
@@ -36,14 +38,16 @@ pipeline {
         }
       }
     }
+
     stage('Schedule Staging Deployment') {
       when {
-        branch 'master'
+        branch 'main'  // ✅ Actualizado: antes era 'master'
       }
       steps {
-        build job: 'deploy-webapp-staging', parameters: [string(name: 'ARTIFACT_ID', value: "${env.ARTIFACT_ID}")], wait: false
+        build job: 'deploy-webapp-staging', parameters: [
+          string(name: 'ARTIFACT_ID', value: "${env.ARTIFACT_ID}")
+        ], wait: false
       }
     }
   }
 }
-
